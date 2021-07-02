@@ -1,0 +1,293 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <getopt.h>
+#include <msfactory.h>
+#include <msticker.h>
+
+
+typedef struct PcapStream
+{
+    MSFilter *source;
+    MSFilter *audio_dec;
+    MSFilter *resample;
+    MSFilter *audio_enc;
+    MSFilter *video_regroup;
+    MSFilter *video;
+    MSFilter *muxer;
+}PcapStream;
+
+
+
+typedef struct StreamParameter
+{
+    char *src_addr;
+    char *dest_addr;
+    char *input_file;
+    char *output_file;
+    int audio_before_pt;
+    int audio_after_pt;
+
+}StreamParameter;
+
+
+
+
+static bool_t need_sleep = TRUE;
+static struct option long_options[] = {
+    {"in",          required_argument,  NULL, 'i' },
+    {"out",         required_argument,  NULL, 'o' },
+    {"src",         required_argument,  NULL, 's' },
+    {"dest",        required_argument,  NULL, 'd' },
+    {"abcodec",     required_argument,  NULL, 'b' },
+    {"afcodec",     required_argument,  NULL, 'f' },
+    {"version",     no_argument,        NULL, 'v' },
+    {"help",        no_argument,        NULL, 'h' },
+    {0,             0,                  0,     0  }
+};
+
+
+static int ticker_detach(MSTicker *ticker);
+static void ms_filter_postprocess(MSFilter *f);
+
+static void print_usage()
+{
+    printf("Option:\n");
+    printf("The option marked with * is required.\n");
+    printf(" -i, --in=FILE       *       The file name for input file.\n");
+    printf(" -o, --out=FILE      *       The file name for output file.\n");
+    printf(" -s,                 *       The source address to be filtered.\n");
+    printf(" -d,                 *       The destination address to be filtered.\n");
+    printf(" -v, --version               Print the version number and exit.\n");
+    printf(" -h, --help                  Print this message and exit.\n");
+}
+
+static void pcap_file_end(void *userdata, struct _MSFilter *f, unsigned int id, void *arg)
+{
+    printf("%s : id =  [%d]\n", __func__, id);
+    if (id == 0)
+    {
+        ms_ticker_destroy(f->ticker);
+        need_sleep = FALSE;
+    }
+}
+
+static int create_stream_filter(MSFactory *factory, PcapStream *stream, StreamParameter *param)
+{
+    MSConnectionHelper h;
+
+    stream->source = ms_factory_create_filter(factory, MS_PARSE_PCAP_ID);
+    ms_filter_call_method(stream->source, MS_SET_FILE_NAME, (void *)param->input_file);
+    ms_filter_call_method(stream->source, MS_SET_SRC_ADDR, (void *)param->src_addr);
+    ms_filter_call_method(stream->source, MS_SET_DEST_ADDR, (void *)param->dest_addr);
+    ms_filter_set_notify_callback(stream->source, pcap_file_end, NULL);
+
+    if (param->audio_after_pt != 0 && param->audio_before_pt != param->audio_after_pt)
+    {
+        stream->audio_dec = ms_factory_create_filter(factory, MS_G711_DEC_ID);
+        stream->resample = ms_factory_create_filter(factory, MS_RESAMPLE_ID);
+        stream->audio_enc = ms_factory_create_filter(factory, MS_MP3_ENC_ID);
+    }
+
+    stream->video_regroup = ms_factory_create_filter(factory, MS_H264_REGROUP_ID);
+    stream->muxer = ms_factory_create_filter(factory, MS_MUXER_ID);
+    ms_filter_call_method(stream->muxer, MS_SET_FILE_NAME, (void *)param->output_file);
+
+
+
+
+    ms_connection_helper_start(&h);
+    ms_connection_helper_link(&h, stream->source, -1, 0);
+    if (stream->audio_dec)  ms_connection_helper_link(&h, stream->audio_dec, 0, 0);
+    if (stream->resample)   ms_connection_helper_link(&h, stream->resample, 0, 0);
+    if (stream->audio_enc)  ms_connection_helper_link(&h, stream->audio_enc, 0, 0);
+    ms_connection_helper_link(&h, stream->muxer, 0, -1);
+    ms_connection_helper_start(&h);
+    ms_connection_helper_link(&h, stream->source, -1, 1);
+    ms_connection_helper_link(&h, stream->video_regroup, 0, 0);
+    ms_connection_helper_link(&h, stream->muxer, 1, -1);
+}
+
+
+static int destroy_stream_filter(MSFactory *factory, PcapStream *stream)
+{
+    MSConnectionHelper h;
+
+    ms_connection_helper_start(&h);
+    ms_connection_helper_unlink(&h, stream->source, -1, 0);
+    if (stream->audio_dec)  ms_connection_helper_unlink(&h, stream->audio_dec, 0, 0);
+    if (stream->resample)   ms_connection_helper_unlink(&h, stream->resample, 0, 0);
+    if (stream->audio_enc)  ms_connection_helper_unlink(&h, stream->audio_enc, 0, 0);
+    ms_connection_helper_unlink(&h, stream->muxer, 0, -1);
+    ms_connection_helper_start(&h);
+    ms_connection_helper_unlink(&h, stream->source, -1, 1);
+    ms_connection_helper_unlink(&h, stream->video_regroup, 0, 0);
+    ms_connection_helper_unlink(&h, stream->muxer, 1, -1);
+
+
+    if (stream->source)         ms_filter_destroy(stream->source);
+    if (stream->audio_dec)      ms_filter_destroy(stream->audio_dec);
+    if (stream->resample)       ms_filter_destroy(stream->resample);
+    if (stream->audio_enc)      ms_filter_destroy(stream->audio_enc);
+    if (stream->video_regroup)  ms_filter_destroy(stream->video_regroup);
+    if (stream->muxer)          ms_filter_destroy(stream->muxer);
+}
+
+
+
+void ms_filter_preprocess(MSFilter *f, struct _MSTicker *t)
+{
+    f->last_tick = 0;
+    f->ticker = t;
+    if (f->desc->preprocess != NULL) f->desc->preprocess(f);
+}
+
+
+
+static int ticker_attach(MSTicker *ticker, PcapStream *stream)
+{
+    bctbx_list_t *it = NULL;
+    bctbx_list_t *filters = NULL;
+
+    filters = bctbx_list_append(filters, stream->source);
+    if (stream->audio_dec)  filters = bctbx_list_append(filters, stream->audio_dec);
+    if (stream->resample)   filters = bctbx_list_append(filters, stream->resample);
+    if (stream->audio_enc)  filters = bctbx_list_append(filters, stream->audio_enc);
+    filters = bctbx_list_append(filters, stream->video_regroup);
+    filters = bctbx_list_append(filters, stream->muxer);
+
+
+    for(it = filters; it != NULL; it = it->next)
+    {
+        ms_filter_preprocess((MSFilter*)it->data, ticker);
+    }
+
+    ticker->execution_list = bctbx_list_concat(ticker->execution_list, filters);
+}
+
+
+static void ms_filter_postprocess(MSFilter *f)
+{
+    if (f->desc->postprocess != NULL)
+        f->desc->postprocess(f);
+    f->ticker = NULL;
+}
+
+
+static int ticker_detach(MSTicker *ticker)
+{
+    bctbx_list_t *it = NULL;
+    bctbx_list_t *filters = ticker->execution_list;
+
+    for(it = filters; it != NULL; it = it->next)
+    {
+        ms_filter_postprocess((MSFilter*)it->data);
+    }
+
+    bctbx_list_free(filters);
+}
+
+
+static void parse_options(int argc, const char *argv[], StreamParameter *param)
+{
+    int optc = -1;
+    int opt_index = -1;
+
+    while ((optc = getopt_long(argc, (char *const *)argv, "hvs:d:i:o:", long_options, &opt_index)) != -1)
+    {
+        printf("optc = [%c] : optarg = [%s] : opt_index = [%d]\n", optc, optarg, opt_index);
+        switch (optc)
+        {
+            case 'i':
+            {
+                param->input_file = optarg;
+                break;
+            }
+            case 'o':
+            {
+                param->output_file = optarg;
+                break;
+            }
+            case 's':
+            {
+                param->src_addr = optarg;
+                break;
+            }
+            case 'd':
+            {
+                param->dest_addr = optarg;
+                break;
+            }
+            case 'b':
+            {
+                param->audio_before_pt = atoi(optarg);
+                break;
+            }
+            case 'f':
+            {
+                param->audio_after_pt = atoi(optarg);
+                break;
+            }
+            case 'v':
+            {
+                printf("version...\n");
+                exit(0);
+                break;
+            }
+            case '?':
+            case 'h':
+            default:
+            {
+                print_usage();
+                exit(0);
+            }
+        }
+    }
+}
+
+
+int main(int argc, const char *argv[])
+{
+    MSFactory *factory = NULL;
+    MSTicker *ticker = NULL;
+    PcapStream stream;
+    StreamParameter param;
+
+    /*解析选项*/
+    memset(&param, 0, sizeof(StreamParameter));
+    parse_options(argc, argv, &param);
+    if (param.input_file == NULL || param.output_file == NULL || param.src_addr == NULL || param.dest_addr == NULL)
+    {
+        print_usage();
+        return -1;
+    }
+
+    factory = ms_factory_new();
+    if (factory == NULL)
+    {
+        printf("ms_factory_new failed.\n");
+        return -1;
+    }
+
+    memset(&stream, 0, sizeof(PcapStream));
+    create_stream_filter(factory, &stream, &param);
+
+
+    ticker = ms_ticker_new();
+    ticker_attach(ticker, &stream);
+
+    need_sleep = TRUE;
+    while (need_sleep)
+    {
+        sleep(1);
+        printf("sleep...\n");
+    }
+
+    destroy_stream_filter(factory, &stream);
+    ms_factory_destroy(factory);
+    return 0;
+}
+
+
+
+
