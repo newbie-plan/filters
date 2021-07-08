@@ -15,6 +15,8 @@ typedef enum MSFilterId
     MS_MUXER_ID,
     MS_RESAMPLE_ID,
     MS_SCALE_ID,
+    MS_AMIX_ID,
+    MS_VMIX_ID,
 }MSFilterId;
 
 #endif

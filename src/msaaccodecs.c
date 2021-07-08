@@ -148,6 +148,7 @@ void aac_enc_init(struct _MSFilter *f)
 void aac_enc_preprocess(struct _MSFilter *f)
 {
     AacEncoder *d = NULL;
+    printf("%s : %s : %d\n", __FILE__, __func__, __LINE__);
     if (f == NULL)
     {
         printf("%s failed.\n", __func__);

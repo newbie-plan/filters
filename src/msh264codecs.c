@@ -62,6 +62,7 @@ void h264_dec_init(struct _MSFilter *f)
 void h264_dec_preprocess(struct _MSFilter *f)
 {
     H264Decoder *d = NULL;
+    printf("%s : %s : %d\n", __FILE__, __func__, __LINE__);
 
     if (f == NULL)
     {

@@ -19,6 +19,7 @@ typedef struct
     int sample_fmt;
     MSQueue split_before;
     MSQueue split_after;
+    FILE *fp;
 }MP3Decoder;
 
 #define FF_ARRAY_ELEMS(a) (sizeof(a) / sizeof((a)[0]))
@@ -97,12 +98,14 @@ void mp3_dec_init(struct _MSFilter *f)
     d->sample_fmt = AV_SAMPLE_FMT_FLTP;
     ms_queue_init(&d->split_before);
     ms_queue_init(&d->split_after);
+    d->fp = fopen("audio.mp3", "wb");
     f->data = (void *)d;
 }
 
 void mp3_dec_preprocess(struct _MSFilter *f)
 {
     MP3Decoder *d = NULL;
+    printf("%s : %s : %d\n", __FILE__, __func__, __LINE__);
 
     if (f == NULL)
     {
@@ -261,6 +264,12 @@ void mp3_dec_process(struct _MSFilter *f)
         AVPacket *pkt = d->pkt;
         AVFrame *frame = d->frame;
         int bytes_per_sample = av_get_bytes_per_sample(d->codec_ctx->sample_fmt);
+
+        if (d->fp != NULL)
+        {
+            fwrite(im->b_rptr, 1, im->b_wptr - im->b_rptr, d->fp);
+        }
+
         ms_queue_put(&d->split_before, im);
         mp3_split_frame(d);
         while ((im = ms_queue_get(&d->split_after)) != NULL)
@@ -490,7 +499,7 @@ void mp3_enc_init(struct _MSFilter *f)
     d = ms_new0(Mp3Encoder, 1);
     d->sample_rate = 44100;
     d->channels = 1;
-    d->sample_fmt = AV_SAMPLE_FMT_FLTP;
+    d->sample_fmt = AV_SAMPLE_FMT_S16P;
     d->frame_size = 1152;
     d->bit_rate = 192000;
 
@@ -501,6 +510,7 @@ void mp3_enc_init(struct _MSFilter *f)
 void mp3_enc_preprocess(struct _MSFilter *f)
 {
     Mp3Encoder *d = NULL;
+    printf("%s : %s : %d\n", __FILE__, __func__, __LINE__);
     if (f == NULL)
     {
         printf("%s failed.\n", __func__);
@@ -725,6 +735,26 @@ static int mp3_enc_set_channels(MSFilter *f, void *arg)
     return 0;
 }
 
+static int mp3_enc_set_sf(MSFilter *f, void *arg)
+{
+    Mp3Encoder *d = NULL;
+
+    if (f == NULL || arg == NULL)
+    {
+        printf("%s failed.\n", __func__);
+        return -1;
+    }
+    d = (Mp3Encoder *)f->data;
+    if (d == NULL)
+    {
+        printf("%s failed.\n", __func__);
+        return -1;
+    }
+
+    d->sample_fmt = *((int *)arg);
+    return 0;
+}
+
 MSFilterMethod mp3_enc_methods[] = {
     {MS_GET_SAMPLE_RATE, mp3_enc_get_sr},
     {MS_GET_CHANNELS,    mp3_enc_get_channels},
@@ -732,6 +762,7 @@ MSFilterMethod mp3_enc_methods[] = {
     {MS_GET_FRAME_SIZE,  mp3_enc_get_frame_size},
     {MS_SET_SAMPLE_RATE, mp3_enc_set_sr},
     {MS_SET_CHANNELS,    mp3_enc_set_channels},
+    {MS_SET_SAMPLE_FMT,  mp3_enc_set_sf},
     {-1, NULL},
 };
 

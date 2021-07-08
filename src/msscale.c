@@ -17,7 +17,6 @@ typedef struct Scale
     int dst_width;
     int dst_height;
     int dst_pix_fmt;
-    FILE *fp;
 }Scale;
 
 
@@ -55,7 +54,6 @@ void scale_init(struct _MSFilter *f)
     d->dst_width = 1920;
     d->dst_height = 1920;
     d->dst_pix_fmt = AV_PIX_FMT_YUV420P;
-    d->fp = fopen("scale.yuv", "wb");
     f->data = (void *)d;
 }
 
@@ -133,10 +131,7 @@ void scale_process(struct _MSFilter *f)
         dst_stride[2] = d->dst_width / 2;
 
         ret = sws_scale(d->sws_ctx, (const uint8_t * const*)src_slice, (const int *)src_stride, 0, d->src_height, (uint8_t * const*)dst_slice, (const int *)dst_stride);
-        if (ret < 0)
-        {
-            printf("(%s) %s : sws_scale failed [%s]\n", scale_name, __func__, av_err2str(ret));
-        }
+
         om->b_wptr += dst_frame_size * 3 / 2;
         mblk_set_timestamp_info(om, timestamp);
         ms_queue_put(f->outputs[0], om);

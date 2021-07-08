@@ -92,6 +92,7 @@ typedef struct ParsePcapData
     uint32_t dest_addr;
     struct time_val first_time_audio;    
     struct time_val first_time_video;
+    uint32_t last_packet_seq;
 }ParsePcapData;
 
 #define BUFFER_SIZE 1024000
@@ -102,8 +103,6 @@ typedef struct ParsePcapData
 #define IP_HDR_LEN          sizeof(IPHeader)
 #define UDP_HDR_LEN         sizeof(UdpHeader)
 
-static int payload_type[] = {0, 14, 96, 97};
-static uint32_t last_packet_seq = -1;
 
 
 
@@ -152,6 +151,7 @@ static void parse_pcap_init(MSFilter *f)
     d = ms_new0(ParsePcapData, 1);
     memset(d, 0, sizeof(ParsePcapData));
     ms_bufferizer_init(&d->pcap_data);
+    d->last_packet_seq = -1;
     f->data = (void *)d;
     return;
 }
@@ -220,7 +220,7 @@ static int read_one_rtp_packet(ParsePcapData *d, MediaPacket *pkt)
             ms_bufferizer_read(&d->pcap_data, (uint8_t *)&rtp_h, sizeof(RtpHeader));
             skip_len -= sizeof(RtpHeader);
 
-            if (rtp_h.version == RFC_1889_VERSION && rtp_h.seq != last_packet_seq)
+            if (rtp_h.version == RFC_1889_VERSION && rtp_h.seq != d->last_packet_seq)
             {
                 uint32_t rtp_size = 0;
 
@@ -236,7 +236,7 @@ static int read_one_rtp_packet(ParsePcapData *d, MediaPacket *pkt)
                 pkt->marker = rtp_h.marker;
                 payload_type = rtp_h.payload_type;
                 skip_len -= rtp_size;
-                last_packet_seq = rtp_h.seq;
+                d->last_packet_seq = rtp_h.seq;
             }
         }
     }
@@ -281,7 +281,7 @@ static void parse_pcap_process(MSFilter *f)
             < PACKET_HDR_LEN + ETHERNET_HDR_LEN + IP_HDR_LEN + UDP_HDR_LEN)
         {
             printf("%s : pcap file is in the end\n", __func__);
-            ms_filter_notify_no_arg(f, 0);
+//            ms_filter_notify_no_arg(f, 0);
             break;
         }
     } while ((payload_type = read_one_rtp_packet(d, &pkt)) < 0);
@@ -335,7 +335,7 @@ static void parse_pcap_process(MSFilter *f)
         default:
         {
             if (pkt.payload) freemsg(pkt.payload);
-            printf("%s : Unsurport this payload type [%d]\n", __func__, payload_type);
+//            printf("%s : Unsurport this payload type [%d]\n", __func__, payload_type);
         }
     }
 

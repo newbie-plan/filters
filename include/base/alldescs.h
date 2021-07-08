@@ -12,6 +12,8 @@ extern MSFilterDesc ms_h264_enc_desc;
 extern MSFilterDesc ms_h264_dec_desc;
 extern MSFilterDesc ms_scale_desc;
 extern MSFilterDesc ms_muxer_desc;
+extern MSFilterDesc ms_vmix_desc;
+extern MSFilterDesc ms_amix_desc;
 
 
 
@@ -28,6 +30,8 @@ MSFilterDesc *ms_filter_descs[] =
     &ms_h264_dec_desc,
     &ms_scale_desc,
     &ms_muxer_desc,
+    &ms_vmix_desc,
+    &ms_amix_desc,
     NULL
 };
 

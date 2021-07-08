@@ -32,6 +32,8 @@
 #define MS_GET_WIDTH                22
 #define MS_GET_HEIGTH               23
 #define MS_GET_PIX_FMT              24
+#define MS_SET_AMIX_INFO            25
+#define MS_SET_VMIX_INFO            26
 
 
 struct _MSFilter;

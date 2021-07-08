@@ -1,5 +1,1 @@
-# filters
-
-./main --addr=10.10.9.46 --sample_rate=8000 --channels=1 --acodec=g711
---size=1920x1080 -i ./stream.pcap --addr 47.95.218.122  --acodec=aac -r
-48000 --size 1280x720 -o stream.mp4
+./main --srcaddr=10.10.9.46 --dstaddr=47.95.218.122 --sample_rate=8000 --channels=1 --format s16p --acodec=g711 --size=1920x1080 --pix_fmt yuv420p --in ../pcap/stream.pcap --srcaddr 10.10.6.200 --dstaddr 10.10.6.20 --sample_rate 44100 -c 1 --format fltp --acodec mp3 --size 768x432 --pix_fmt yuv420p --in ~/share/test/people-mp3-24-nb.pcap  --acodec=mp3 -r 48000 --size 1280x720 -p yuv420p -c 1 --format s16p -o stream.mp4

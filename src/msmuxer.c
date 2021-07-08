@@ -359,19 +359,19 @@ static int muxer_set_mime_type(MSFilter *f, void *arg)
     if (strcasecmp(mime_type, "mp3") == 0)
     {
         d->codec_id = AV_CODEC_ID_MP3;
-        d->sample_fmt = AV_SAMPLE_FMT_FLTP;
+//        d->sample_fmt = AV_SAMPLE_FMT_FLTP;
         d->frame_size = d->sample_rate <= 16000 ? 576 : 1152;
     }
     else if (strcasecmp(mime_type, "aac") == 0)
     {
         d->codec_id = AV_CODEC_ID_AAC;
-        d->sample_fmt = AV_SAMPLE_FMT_FLTP;
+//        d->sample_fmt = AV_SAMPLE_FMT_FLTP;
         d->frame_size = 1024;
     }
     else
     {
         d->codec_id = AV_CODEC_ID_MP3;
-        d->sample_fmt = AV_SAMPLE_FMT_FLTP;
+//        d->sample_fmt = AV_SAMPLE_FMT_FLTP;
         d->frame_size = d->sample_rate <= 16000 ? 576 : 1152;
     }
     printf("%s : d->mime_type = [%s]\n", __func__, mime_type);

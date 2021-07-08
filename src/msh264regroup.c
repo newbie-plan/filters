@@ -100,7 +100,6 @@ void h264_regroup_process(struct _MSFilter *f)
         uint8_t marker = mblk_get_marker_info(im);
         uint32_t timestamp = 0;
 
-
         if (type >= 1 && type <= 23) type = 1;
         switch (type)
         {
